@@ -1,6 +1,6 @@
 'use strict';
 const SOURCE='https://github.com/NOrangeeroli/meta-pde-solver/blob/7b302f507d3ef6707be63ff099b91376a6573adb/';
-const chapters=[['overview','全局图景'],['hierarchy','五层组件拆分'],['equations','跨方程共享结构'],['dsl','DSL 与类型契约'],['supernet','L1 / L2 Supernet'],['training','梯度与多网格训练'],['controllers','CFL、拒步与回退'],['budget','成本预算与剪枝'],['quickstart','从代码开始'],['sources','范围与实现来源']];
+const chapters=[['overview','全局图景'],['hierarchy','五层组件拆分'],['simple-solver','算例：拆开一个 solver'],['equations','跨方程共享结构'],['dsl','DSL 与类型契约'],['supernet','L1 / L2 Supernet'],['training','梯度与多网格训练'],['controllers','CFL、拒步与回退'],['budget','成本预算与剪枝'],['quickstart','从代码开始'],['sources','范围与实现来源']];
 const flow=(items)=>`<div class="flow">${items.map((x,i)=>`${i?'<span class="arrow" aria-hidden="true">→</span>':''}<div class="node ${['teal','blue','purple','amber'][i%4]}"><b>${x[0]}</b><span>${x[1]}</span></div>`).join('')}</div>`;
 const head=(n,k,t,p)=>`<p class="section-label">${n} / ${k}</p><h2>${t}</h2><p class="lead">${p}</p>`;
 const pages={overview:()=>head('01','OVERVIEW','搜索的是数值算法的组合。','把经典 solver 写成能逐层展开的计算图，在兼容的接口上放入候选模块，再通过数据选择结构和参数。')+`
@@ -32,7 +32,7 @@ primitives = lower(graph, 4)
 u = torch.zeros(2, 32, dtype=torch.float64)
 v = evaluate(primitives, {"u": u, "dt_dx": 0.01})`)}
 <details><summary>为什么不是把每一个高层组件都重新写成 Torch？</summary><p>高层组件是构图规则，最终指向已有 L4 Torch 操作。改用更细的搜索粒度时，展开图即可；训练参数通过引用保持身份，不复制、不 detach。只有引入新的底层操作时，才需要增加对应执行实现与梯度检查。</p></details>`;
-pages.equations=()=>head('03','CROSS-EQUATION','共享结构，显式保留物理差异。','方程提供物理通量、波速和状态语义；几何与数值模块提供重构、残差和时间更新。共享接口不等于可以随意混用不同方程的通量。')+`
+pages.equations=()=>head('04','CROSS-EQUATION','共享结构，显式保留物理差异。','方程提供物理通量、波速和状态语义；几何与数值模块提供重构、残差和时间更新。共享接口不等于可以随意混用不同方程的通量。')+`
 <div class="diagram"><div class="diagram-head"><p class="label">EQUATION × NUMERICAL PROGRAM</p><span class="chip">交互 · 切换物理模型</span></div><div class="controls"><label for="equation-select">物理模型</label><select id="equation-select"><option value="burgers">Burgers</option><option value="euler">Euler · 理想气体</option><option value="shallow">浅水 · 平底</option></select></div><div id="physics-panel" aria-live="polite"></div>${flow([['状态与物理通量','equation-specific'],['重构与界面方法','compatible candidates'],['守恒残差与时间步','shared composition']])}<p class="caption">图 03 · 切换方程会改变状态宽度、波速与物理约束，但沿用分层组合的方法。</p></div>
 <h3>默认入口覆盖 18 个方程 ID</h3>${table(['类别','方程 ID','必须保留的差异'],[['标量','advection / advection2d / burgers / kpp2d','线性与非线性通量、空间方向'],['波系统','acoustics / acoustics2d / elastic / maxwell / nonlinear_elastic','变量顺序、材料参数、特征速度'],['流体','euler / euler2d / shallow / shallow2d','密度、压力或水深 admissibility'],['带地形','shallow_bathy','PC 水静力重构与成对地形修正'],['磁流体','mhd / isothermal_mhd','1D、空间恒定的法向磁场与对应 EOS'],['带源项','reactive / relaxation','半源项 → 输运 → 半源项的分裂结构']])}
 <div class="note">这些 default supernets 主要采用 FV + SSPRK3。一般重构候选为 PC / MUSCL MC / WENO5-JS，通量候选为 local / line-global / learned LLF；<code>shallow_bathy</code> 固定 PC 水静力重构。它们比 Burgers catalogue 的完整搜索空间更窄。</div>
@@ -48,7 +48,7 @@ net = build_default_supernet(
 # next_u = net(u=u, dt=0.001, dx=0.02, dy=0.02)`)}
 <h3>数据布局也是契约的一部分</h3>${table(['接口','布局','组合时的规则'],[['默认标量 / 系统','[B,N] / [B,C,N]；2D 追加 Ny,Nx','空间轴在最后，状态分量紧邻空间轴之前'],['Burgers catalogue','[B,3,N] 增广状态','mean、DG slope、初始 LF speed；每条轨迹只初始化一次'],['programs.Recipe 前端','[cells,components]','与空间轴在末尾的训练前端不同；必须显式转换，不能直接混接']])}
 <p class="small">跨方程复用的是表示语言与模块组合原则。干湿界面、源项平衡、真空、材料变化、MHD 约束等需要单独的兼容性与数值验证。</p>`;
-pages.dsl=()=>head('04','DSL','DSL = 数值图 + 选择节点 + 参数引用。','这是嵌入 Python 的构图语言，不是另一门需要解析的文本语言。模型保留带 Choice 的源图，再逐层展开到 Torch 执行图。')+`
+pages.dsl=()=>head('05','DSL','DSL = 数值图 + 选择节点 + 参数引用。','这是嵌入 Python 的构图语言，不是另一门需要解析的文本语言。模型保留带 Choice 的源图，再逐层展开到 Torch 执行图。')+`
 <div class="diagram">${flow([['数值候选','Node：经典公式或组件组合'],['Choice + Contract','同位置、同物理量、同 shape'],['TorchProgram','共享参数与源图元信息'],['L4 执行图','autograd 与序列化回放']])}<p class="caption">图 04 · Choice 是图节点。level 决定它处于哪一层；id 决定多个位置是否共用一个选择。</p></div>
 <h3>定义一个真实的 L1 重构选择</h3>${code('Python · 可直接运行的 Choice 示例',`import torch
 from solver_sculpt.hierarchy.ir import input
@@ -80,13 +80,13 @@ multiplier = ir.node("p.add", ir.constant(1.0), ir.node("p.exp", raw))
 # model.parameters() 同时包含 gate 与可学习 expert 参数。`)}
 <h3>源图、执行图、导出图</h3>${table(['产物','保留什么','用途'],[['structure_json() + state_dict()','Choice、配置、参数身份与张量值','重新构造模型；优化器状态需另行保存'],['lower / 缓存的 L4 图','张量原语及运行时参数引用','执行与反向传播'],['discretize()','每个 gate 的一个候选；移除死分支','硬模型验证与保留参数微调'],['freeze()','当前确定性混合权重变成常量','单独 freeze 仍可能是混合模型'],['discretize().freeze()','单选、常量化的算术图','数值内核部署；controller 需另存']])}
 <p class="small">不要用已经展开的 L4 图重建可训练源模型：它不再携带完整的 architecture metadata。自定义宏必须先注册，再载入结构。</p>`;
-pages.supernet=()=>head('05','SUPERNET','先选择算法族，再搜索内部组合。','Burgers catalogue 用 L0 family gate 保留 FV、Classic、SharpClaw、DG 的不同拓扑。mixture_level=1 或 2 改变兼容分支内部的搜索粒度，不把所有 gate 统一到同一层。')+`
+pages.supernet=()=>head('06','SUPERNET','先选择算法族，再搜索内部组合。','Burgers catalogue 用 L0 family gate 保留 FV、Classic、SharpClaw、DG 的不同拓扑。mixture_level=1 或 2 改变兼容分支内部的搜索粒度，不把所有 gate 统一到同一层。')+`
 <div class="diagram"><div class="diagram-head"><p class="label">HIERARCHICAL SEARCH SPACE</p><div class="seg" aria-label="搜索粒度"><button data-mixture="1" aria-pressed="true">L1 模块级</button><button data-mixture="2" aria-pressed="false">L2 机制级</button></div></div><div class="center-label">u = [mean, DG slope, initial LF speed] → L0 family Choice</div><div class="branch-group"><div class="branch active"><h4>FV</h4><p>trace → flux → divergence → RK</p></div><div class="branch"><h4>Classic</h4><p>Roe waves → wave limiter → correction</p></div><div class="branch"><h4>SharpClaw</h4><p>WENO wave propagation → SSP104 / SSP33</p></div><div class="branch"><h4>DG · P1</h4><p>mean + persistent slope → stage-limited RK3</p></div></div><div class="center-label">↓ 放大 FV 分支中的候选位置</div><div id="mixture-detail" aria-live="polite"></div><p class="caption">图 05 · L2 模式仍含 L1 时间积分等选择。Classic 波限幅不等于 MUSCL 斜率限幅，SharpClaw 也不等于 WENO + LLF。</p></div>
 <h3>拖动 gate，观察软组合与硬选择</h3><p>用 PC / MUSCL MC / WENO5-JS 三个候选演示 gate 公式。数字为交互示意，不是训练得到的参数或精度。</p>
 <div class="diagram"><div class="diagram-head"><p class="label">DETERMINISTIC GATE DEMO</p><button class="btn" id="reset-gates">重置</button></div><div class="expert-grid">${['PC','MUSCL MC','WENO5-JS'].map((x,i)=>`<div class="expert"><h4>${x}<output id="weight-${i}"></output></h4><label for="logit-${i}">logit α<sub>${i}</sub> <output id="logit-value-${i}"></output></label><input id="logit-${i}" type="range" min="-4" max="4" step="0.1" value="${[-1,0,2][i]}"><label for="rho-${i}">稀疏参数 ρ<sub>${i}</sub> <output id="rho-value-${i}"></output></label><input id="rho-${i}" type="range" min="-6" max="6" step="0.1" value="2"><div class="weight-bar"><i id="bar-${i}"></i></div></div>`).join('')}</div><div class="equation">zₖ = clip(1.2 · sigmoid(ρₖ) − 0.1, 0, 1)<br>wₖ = softmax(α)ₖ · zₖ / Σⱼ softmax(α)ⱼ · zⱼ</div><div id="gate-result" class="result-strip" aria-live="polite"></div><p class="caption">图 06 · 确定性 gate，温度为 1。所有 gate 关闭时回到 softmax；硬导出取最大权重并真正删掉其余分支。</p></div>
 <h3>内部参数也一起优化</h3>${table(['位置','L1 模式','L2 模式'],[['重构内部','learned MUSCL θ：初值 1.5，范围 1…2','learned WENO-Z ε：初值 10⁻⁶，范围 10⁻¹⁰…10⁻²'],['LLF 耗散','1 + exp(raw)，初值 1.2','同一参数化'],['gate 范围','全局共享，不随 x 或状态变化','全局共享，不是输入条件化 router']])}
 <div class="note warm">这里与 mixture of experts 相似的是候选的加权组合。当前实现是全局 architecture gates，不是为每个单元或输入状态生成不同权重的 router。激活更多专家只扩大可表达范围，不保证训练找到更优 solver。</div>`;
-pages.training=()=>head('06','TRAINING','一套参数，在多种分辨率上学习。','数值 gate α、expert 内部参数 θ、controller gate 与有界 CFL 一起优化。跨网格共享同一模型，连续初态和物理输出时刻也保持配对。')+`
+pages.training=()=>head('07','TRAINING','一套参数，在多种分辨率上学习。','数值 gate α、expert 内部参数 θ、controller gate 与有界 CFL 一起优化。跨网格共享同一模型，连续初态和物理输出时刻也保持配对。')+`
 <div class="diagram"><div class="diagram-head"><p class="label">REFERENCE → ROLLOUT → GRADIENT</p><span class="chip">同一 θ / α，所有网格</span></div><div class="train-steps">${[['01','采样初态','按 family 平衡抽样，同一批 profile 用于所有 N。'],['02','解析单元平均','在各网格边界上独立积分，不插值粗网格预测。'],['03','分别 rollout','每个 controller 生成完整轨迹，状态不互相混合。'],['04','组合目标','均衡网格误差 + 预算约束 + 稀疏惩罚。'],['05','累积梯度','一条 profile / controller / grid 轨迹一次反传。'],['06','硬导出验证','独立 validation profiles，检查误差与真实计数成本。']].map(x=>`<div class="train-step"><span class="num">${x[0]}</span><b>${x[1]}</b><p>${x[2]}</p></div>`).join('')}</div><div class="return-line">← Adam 更新共享参数；下一轮重复采样与前向计算</div><p class="caption">图 07 · 预算训练实现使用确定性数值 gates，保留梯度但不在每个时间步重新随机采样架构。</p></div>
 <h3>同一个函数，不同的单元平均</h3><div class="diagram"><div class="equation">ūᵢ(t) = 1/Δx · ∫<sub>cell i</sub> u(x,t) dx</div>${[32,64,128,256].map((n,i)=>`<div class="grid-lines"><b>N=${n}</b><div class="mesh" aria-label="N=${n} 的网格示意">${Array.from({length:[8,16,32,64][i]},()=>'<i></i>').join('')}</div><span>${i<3?'权重 1/3':'仅迁移评估'}</span></div>`).join('')}<p class="caption">图 08 · 绘制的是缩略网格示意。训练和选模在 32/64/128；256 在选模完成后评估，不参与梯度与 checkpoint 选择。</p></div>
 <div class="equation">ℒ<sub>err</sub> = 1/|G| Σ<sub>N∈G</sub> Σ<sub>c</sub> π<sub>c</sub> · NMSE(rollout<sub>c</sub>(θ, α; N), reference<sub>N</sub>)</div><p class="small">每个 profile 的分母为 <code>max(amplitude², 10⁻⁴)</code>。先在每个网格平均时间、单元和 profile 的归一化误差，再等权平均网格；不会让细网格因为单元更多而自动占更大权重。</p>
@@ -94,7 +94,7 @@ pages.training=()=>head('06','TRAINING','一套参数，在多种分辨率上学
 <details><summary>稀疏化为什么不直接用 softmax 权重的 L1？</summary><p>归一化 softmax 权重之和恒为 1，直接做 L1 没有选择作用。数值 gate 使用 Hard-Concrete 活跃数量代理，并计入全关闭时的 dense fallback；预算训练另外对 controller 稀疏参数加惩罚。通用训练态可以采样 logistic noise，本预算训练路径使用确定性数值 gate。</p></details>
 <details><summary>解析数据如何覆盖复杂情况？</summary><p>数据源是预先冻结的连续初态清单及其 family、split、amplitude。解析熵解 oracle 在各网格直接生成单元平均，能处理其支持的激波切割单元。初态类型、幅度和最终时刻决定是否包含形成激波、传播、相互作用和长时间行为；短时间窗本身不等于覆盖复杂场景。</p><p>train / validation 通过 profile ID 与连续初态哈希隔离。相同函数禁止跨 split；相似函数的统计泄漏仍需由实验设计处理。默认短时间窗为 0.00390625、0.0078125、0.015625，不应替代长时验证。</p></details>
 <div class="note">流式反传与整体损失的梯度在工程测试中对齐。默认每条训练 rollout 最多 256 次尝试；超过上限会失败，不静默截短。分辨率迁移使用 validation profiles 的更细网格，不是独立 test profiles 的泛化测试。</div>`;
-pages.controllers=()=>head('07','TIME CONTROL','数值内核之外，还要定义如何推进。','同一个空间离散与 RK 方法，采用不同 CFL、波速估计和拒步策略，会得到不同的误差与成本。控制策略因此也需要进入搜索与导出。')+`
+pages.controllers=()=>head('08','TIME CONTROL','数值内核之外，还要定义如何推进。','同一个空间离散与 RK 方法，采用不同 CFL、波速估计和拒步策略，会得到不同的误差与成本。控制策略因此也需要进入搜索与导出。')+`
 <div class="diagram"><div class="diagram-head"><p class="label">TRANSACTIONAL TIME STEP</p><span class="chip">接受才提交状态与时间</span></div>${flow([['估计速度 a','cell / face / Roe'],['提出 Δt','CFL · Δx/a；截到输出时刻'],['尝试数值步','得到候选状态与阶段诊断'],['检查并接受','finite / stage CFL']])}<div class="return-line">检查失败 → 丢弃候选 → PC 回退或减小 Δt → 从旧状态重试</div><p class="caption">图 09 · rollback 保留旧状态与旧时间。所有尝试、拒步、回退与检查都应计入部署成本。</p></div>
 <h3>默认搜索的四条完整策略</h3>${table(['controller','步长 / 检查','失败处理'],[['fixed_1_32','固定 Δt/Δx = 1/32；输出处截断','不重试，失败显式退出'],['cell_cfl','cell speed；CFL 初值 0.2；finite guard','减半重试'],['face_cfl','重构 face speed；CFL 初值 0.35；阶段上限 0.4','减半重试'],['cell_pc_retry','cell speed；CFL 初值 0.2；finite guard','先以 PC 重构重做完整步，再减半']])}
 <div class="equation">CFL = c<sub>min</sub> + (c<sub>max</sub> − c<sub>min</sub>) · sigmoid(raw)<br>默认有界范围：[0.01, 0.45]</div>
@@ -102,7 +102,7 @@ pages.controllers=()=>head('07','TIME CONTROL','数值内核之外，还要定�
 <details open><summary>硬导出时，控制器要与算法族兼容</summary><p>先确定数值 family，再从兼容 controller 中选择最高权重者。face / PC fallback 对硬模型要求 FV；fixed / cell 策略通用。导出记录被排除的 incompatible probability mass，不用另一个算法静默替代。</p></details>
 <details><summary>与原生 HyperBench 的对齐范围</summary><p>hard Classic 另有 previous-CFL 控制，包含初始 Δt=0.1、target=0.4、max=0.45 与拒步缩放；其原生一致性测试独立存在，但它不在 unrestricted mixed-family 的默认 controller 候选中。</p><p>选定 hard FV 配置的 face-CFL、阶段检查与回滚通过原生对齐测试。软 family mixture 的阶段检查只观察 FV stages；Sharp / DG 完整原生控制、MP5 的局部 invalid-trace fallback 不在这项等价声明内。</p></details>
 <p class="small">时间步算术可降到 L4；<code>control_plan</code> 暴露循环、检查与回滚的层级结构。目前外层动态控制由有界 Python runtime 执行，不能把它称为任意控制流 DSL 的通用解释器。</p>`;
-pages.budget=()=>head('08','BUDGET & EXPORT','优化软模型，用硬模型决定是否合格。','训练时许多 expert 同时计算；部署时只保留单选路径。预算目标估计部署工作量，不把训练期的全部计算当成最终 solver 的成本。')+`
+pages.budget=()=>head('09','BUDGET & EXPORT','优化软模型，用硬模型决定是否合格。','训练时许多 expert 同时计算；部署时只保留单选路径。预算目标估计部署工作量，不把训练期的全部计算当成最终 solver 的成本。')+`
 <div class="diagram">${flow([['软 supernet','全部候选前向 + 可微期望成本'],['独立预算训练','误差 + λ(C/B − 1) + 稀疏项'],['硬剪枝','argmax + compatible controller'],['重新运行','实际尝试计数 + 误差 + 预算']])}<p class="caption">图 10 · λ 通过投影对偶上升更新，始终非负；每个预算 B 分别训练一套模型。</p></div>
 <div class="equation">min<sub>θ,α</sub> ℒ<sub>err</sub> + λ(C/B − 1) + ηR<sub>sparse</sub><br>λ ← max(0, λ + lr<sub>dual</sub> · (C/B − 1))</div>
 <h3>预算如何影响 checkpoint 选择？</h3><div class="diagram"><div class="diagram-head"><p class="label">FEASIBILITY DEMO · SYNTHETIC VALUES</p><span class="chip">教学示意，无实验结果</span></div><label for="budget-slider">部署预算 B：<output id="budget-value"></output> 个示意单位</label><input id="budget-slider" type="range" min="50" max="200" step="5" value="100"><div id="budget-results" aria-live="polite"></div><p class="caption">图 11 · 先过滤成本超标者，再在合格集合中最小化误差。更低误差但超预算的 checkpoint 不能获选。</p></div>
@@ -138,7 +138,7 @@ optimizer.step()
 
 hard = net.discretize().eval()
 mp5 = net.select_solver("mp5_llf")  # 强制经典见证路径`;
-pages.quickstart=()=>head('09','QUICKSTART','从可运行接口，到冻结的训练实验。','运行位置是代码仓库根目录，环境需要 PyTorch 和 NumPy。下面先用常值解检查接口，再准备真正的 Burgers 多网格预算实验。')+`
+pages.quickstart=()=>head('10','QUICKSTART','从可运行接口，到冻结的训练实验。','运行位置是代码仓库根目录，环境需要 PyTorch 和 NumPy。下面先用常值解检查接口，再准备真正的 Burgers 多网格预算实验。')+`
 <div class="note">代码锚定 <code>7b302f507d3ef6707be63ff099b91376a6573adb</code>，分支 <code>codex/burgers-budget-search</code>。需要已有源码仓库访问权限。网页只解释与生成配置，不会在浏览器内启动训练。</div>
 <h3>1. 构建 catalogue supernet</h3>${code('Python · 最小工程示例',smokeCode)}
 <p class="small"><code>rollout</code> 输出包含初态，shape 为 <code>[B, steps+1, N]</code>。内部初始化增广状态一次，避免每步重置 DG slope 或 frozen LF speed。<code>initialization="mp5"</code> 是软偏置，不等于精确 MP5；直接 builder 的默认初始化为 uniform，预算训练默认显式选择 mp5。</p>
@@ -171,10 +171,38 @@ python -m solver_sculpt.hierarchy.burgers_budget_search validate \\
   --output results/euler2d-search \\
   --epochs 20 --batch-size 8 --rollout-steps 4 \\
   --lr 0.001 --sparsity-weight 0.0001 --cfl 0.2 --seed 0`)}<p>这是接口示例；科学运行同样需要先冻结实验目录、代码、数据和协议。通用训练器没有自动继承 Burgers budget trainer 的多网格和成本控制。</p></details>`;
-pages.sources=()=>head('10','SCOPE & SOURCES','让图示与实现保持一致。','这份文档解释的是固定代码快照中的组件与搜索流程。算法可表示、实现通过回归、搜索有效、benchmark 更优，是四个不同的结论。')+`
+pages.sources=()=>head('11','SCOPE & SOURCES','让图示与实现保持一致。','这份文档解释的是固定代码快照中的组件与搜索流程。算法可表示、实现通过回归、搜索有效、benchmark 更优，是四个不同的结论。')+`
 <div class="diagram">${flow([['可表示','有可选路径与完整展开'],['实现一致','独立 oracle / 梯度 / 回放测试'],['搜索有效','硬模型在独立数据上改进'],['推进 frontier','同 benchmark 协议实测']])}<p class="caption">图 12 · 左侧证据不能自动推出右侧结论。本指南不新增任何训练精度或性能结果。</p></div>
 <h3>范围与容易混淆的地方</h3>${table(['陈述','精确解释'],[['64 个 Burgers 配置','冻结 main 目录的 method IDs；含别名与组合，不是 64 种独立理论算法'],['L1 / L2 覆盖','两个 catalogue 搜索空间都能选择这些数值路径；同 Δt、periodic、float64'],['跨方程共享','18 个方程 ID 有基础默认 supernet；不代表每个方程的所有原生 solver / 场景'],['默认初始化','通用 default=baseline；catalogue builder=uniform；budget trainer=mp5'],['controller DSL','时间步算术可展开；动态循环由专用有界 Python runtime 执行'],['Mixture 与稳定性','全局凸权重不自动证明组合后的 TVD、SSP、保正或熵稳定'],['成本','本项目结构 DAG 代理与 HyperBench 成本、wall time 分开解释'],['测试与实验','工程回归用于验证实现，不构成新 solver 的性能结论']])}
 <h3>实现入口</h3><ul class="source-list">${[
 ['solver_sculpt/hierarchy/README.md','五层核心、相邻展开与张量布局'],['solver_sculpt/hierarchy/trainable.py','Choice / MixContract / parameter_ref / TorchProgram'],['docs/hierarchy/trainable-search.md','Gate 语义、序列化与剪枝'],['docs/hierarchy/default-supernets.md','18 个默认方程入口与限制'],['docs/hierarchy/burgers_catalogue/README.md','Burgers L1/L2 候选与 64 配置见证'],['solver_sculpt/hierarchy/burgers_catalogue_supernet.py','Catalogue 构图实现'],['docs/hierarchy/burgers_multigrid_data.md','配对网格数据与解析单元平均'],['docs/hierarchy/burgers_budget_search.md','预算训练与版本化流程'],['solver_sculpt/hierarchy/burgers_control.py','CFL、回滚、回退与控制计划'],['solver_sculpt/hierarchy/burgers_search_cost.py','结构工作量代理实现'],['docs/hierarchy/README.md','programs 前端及跨方程组件扩展']].map(([path,label])=>`<li><a href="${SOURCE+path}" target="_blank" rel="noopener">${label} ↗</a><br><span class="muted mono">${path}</span></li>`).join('')}</ul>
 <p class="small">链接指向源码快照 <code>7b302f507d3ef6707be63ff099b91376a6573adb</code>；私有仓库可能需要登录和访问权限。Burgers 64 配置的原生目录来源另冻结于 <code>5a5730a3d3b6bba5acdd053ad5f735a3e7190554</code>；18 个默认方程 ID 的范围源于 <code>9eb7cc373f6065c34ae85882e95c9aa8d526d272</code>。</p>
 <h3>参考网站</h3><p><a href="https://norangeeroli.github.io/hyperbench-pages/#overview" target="_blank" rel="noopener">HyperBench · 结构与使用文档 ↗</a></p><p class="small">沿用其侧栏章节、紧凑技术文档与范围说明的组织方式。本站的图示、交互和训练说明针对 Solver Sculpt 实现独立编写。</p>`;
+pages['simple-solver']=()=>head('03','A SOLVER, FIVE VIEWS','把一个 Godunov 时间步，拆到张量运算。','只看一个足够简单、可以手算的 solver：一维 Burgers，分片常数重构（PC），Godunov 界面通量，前向 Euler 时间推进。五层描述的是同一个映射，不是连续运行五遍求解器。')+`
+<div class="note">固定周期边界、均匀网格、单元平均状态，令 r = Δt/Δx = 0.1。下面给出完整数值内核；时间步由外部指定，不包含 CFL 控制、拒步或训练。</div>
+<div class="equation">∂u/∂t + ∂(u²/2)/∂x = 0<br>ūⁿ = [0, 1, 2, 1, 0, −1]　　r = 0.1</div>
+<div class="diagram"><div class="diagram-head"><p class="label">SAME STEP · INCREASING DETAIL</p><span class="chip">五层结果应相同</span></div>${flow([['L0 · 一整步','S(ū, r) → ū⁺'],['L1 · 数值模块','PC → Godunov → 更新'],['L2 · 数值机制','零斜率 / 迹 / 通量差'],['L3 → L4','模板代数 → Torch 原语']])}<p class="caption">算例图 A · 箭头表示“打开内部实现”。每次展开保留上一层的输入、输出和算法含义。</p></div>
+<section class="walk-level"><span class="walk-badge">L0</span><div><h3>完整一步：先定义 solver 的身份</h3><p>把它看成一个黑盒接口，但内部必须有可展开的定义：给当前单元平均值和步长比，返回下一时刻单元平均值。</p><div class="equation">S<sub>PC, Godunov, Euler</sub>(ūⁿ, r) = ūⁿ⁺¹</div><p class="small"><strong>输入：</strong>[N] 或 [B,N] 的状态与标量 r。<strong>输出：</strong>相同布局的下一状态。这里的算法身份同时包含空间方法、界面方法、时间方法和边界约定。</p><p class="caption">向 L1 展开：完整时间步变成下面四个有明确端口的数值模块。</p></div></section>
+<section class="walk-level"><span class="walk-badge">L1</span><div><h3>数值模块：重构 → 通量 → 散度 → Euler</h3><div class="diagram">${flow([['PC 重构','cell → 左右 face traces'],['Godunov 通量','两侧迹 → 一个 face flux'],['守恒增量','相邻通量差 × −r'],['Euler 组合','ū⁺ = ū + 增量']])}</div><div class="equation">(u<sup>L</sup>, u<sup>R</sup>) = reconstruct_PC(ū)<br>Fᵢ = Godunov(u<sup>L</sup>ᵢ, u<sup>R</sup>ᵢ)<br>δuᵢ = −r(Fᵢ − Fᵢ₋₁)<br>ū⁺ᵢ = ūᵢ + δuᵢ</div><p class="small">全文用 <strong>Fᵢ 表示第 i 个单元右边界 i+½ 的通量</strong>。相邻两个单元使用同一个界面通量，一增一减，形成守恒更新。这里 δu 已包含 Δt，不能再乘一次时间步。</p><p class="caption">向 L2 展开：打开 PC、Godunov、散度和仿射更新，不再把整个模块当作基本操作。</p></div></section>
+<section class="walk-level"><span class="walk-badge">L2</span><div><h3>数值机制：每个模块里面发生了什么？</h3>${table(['L1 模块','L2 机制','这个算例中的数值'],[['PC 重构','斜率固定为零；从两个相邻单元取左右迹','界面 2+½：uᴸ=2，uᴿ=1'],['Godunov 通量','选择穿过界面的 Burgers 熵解通量','F₂=2；左侧界面 F₁=0.5'],['守恒增量','相邻 face flux 相减，再乘 −r','δu₂=−0.1×(2−0.5)=−0.15'],['Euler 更新','旧状态与增量做系数为 (1,1) 的仿射组合','ū⁺₂=2−0.15=1.85']])}<div class="equation">u<sup>L</sup>ᵢ = ūᵢ + ½ · 0 = ūᵢ<br>u<sup>R</sup>ᵢ = ūᵢ₊₁ − ½ · 0 = ūᵢ₊₁</div><p>对 Burgers 的凸通量，Godunov 通量可以写成以下紧凑公式：</p><div class="equation">G(a,b) = ½ · max(max(a,0)², min(b,0)²)</div><p class="small">这个公式已经包含激波和稀疏波的选择：例如 G(2,1)=2，而跨零稀疏波 G(−1,1)=0。它只适用于这里的标量 Burgers，不能直接用作 Euler 系统的 Godunov 通量。</p><p class="caption">向 L3 展开：迹构造成为邻居读取与线性组合，Godunov 选择成为 max/min/平方，散度成为移位与减法。</p></div></section>
+<section class="walk-level"><span class="walk-badge">L3</span><div><h3>离散代数：把局部依赖写出来</h3><p>此时不再需要“重构方法”或“Riemann solver”的名字，只需明确索引、线性组合和标量代数。以下 shift⁺ 定义为读取 uᵢ₊₁，shift⁻ 读取 uᵢ₋₁；周期边界负责首尾连接。</p><div class="diagram"><div class="stencil"><div class="cell">uᵢ₋₁<br>1</div><div class="cell hot">uᵢ<br>2</div><div class="cell">uᵢ₊₁<br>1</div><div class="cell">Fᵢ₋₁<br>0.5</div><div class="cell hot">Fᵢ<br>2</div></div><div class="center-label">共享左、右面通量 → 差值 1.5 → 增量 −0.15 → 新状态 1.85</div><p class="caption">算例图 B · 聚焦 i=2（从 0 编号）。邻居提供界面状态；更新只使用左右两个共享通量。</p></div><div class="equation">a = ū； b = shift⁺(ū)<br>p = max(a, 0)； m = min(b, 0)<br>F = ½ · max(square(p), square(m))<br>δu = −r · [F − shift⁻(F)]<br>ū⁺ = linear(ū, δu; weights=[1,1])</div><p class="caption">向 L4 展开：square(x) → mul(x,x)，linear → mul/add，shift → 周期索引。简单的 max/min 构件也有对应的终端执行原语。</p></div></section>
+<section class="walk-level"><span class="walk-badge">L4</span><div><h3>执行原语：最终落到 Torch 张量图</h3><p>下面是等价的、可直接运行的 Torch 表达式，用来阅读和核对数值。实际 IR 执行器通过 p.* 注册原语完成这些操作；代码不是源 IR 的逐节点打印。</p>${code('Python · Godunov + PC + Euler 的等价 L4 计算',`import torch
+
+u = torch.tensor([0., 1., 2., 1., 0., -1.], dtype=torch.float64)
+r = 0.1
+zero = torch.zeros_like(u)
+right = torch.roll(u, shifts=-1, dims=-1)  # right[i] = u[i+1]
+pos = torch.maximum(u, zero)
+neg = torch.minimum(right, zero)
+flux = 0.5 * torch.maximum(pos * pos, neg * neg)
+left_flux = torch.roll(flux, shifts=1, dims=-1)
+next_u = u - r * (flux - left_flux)
+
+expected = torch.tensor([0., .95, 1.85, 1.15, 0., -.95],
+                        dtype=torch.float64)
+torch.testing.assert_close(next_u, expected)
+torch.testing.assert_close(next_u.sum(), u.sum())
+print(flux)    # [0, 0.5, 2, 0.5, 0.5, 0]
+print(next_u)  # [0, 0.95, 1.85, 1.15, 0, -0.95]`)}<p class="small">只有索引、比较选择和算术；没有调用隐藏的完整 solver。换成带梯度的参数张量后，autograd 沿这张图传播。L4 是终端层，不继续无限拆分。</p></div></section>
+<h3>把整步结果逐项对上</h3>${table(['单元 i','旧值 ūᵢ','左面 Fᵢ₋₁','右面 Fᵢ','增量 δuᵢ','新值 ū⁺ᵢ'],[['0','0','0','0','0','0'],['1','1','0','0.5','−0.05','0.95'],['2','2','0.5','2','−0.15','1.85'],['3','1','2','0.5','+0.15','1.15'],['4','0','0.5','0.5','0','0'],['5','−1','0.5','0','+0.05','−0.95']])}<div class="note">周期边界下，通量差求和抵消，所以本例更新前后的总和都是 3。这个检查验证守恒关系；它不单独证明所有初态、任意步长下的稳定性。这里 r·max|u|=0.2。</div>
+<h3>拆开以后，搜索发生在哪里？</h3>${flow([['L1 替换','PC ↔ MUSCL ↔ WENO；Godunov ↔ LLF'],['L2 替换','打开高阶重构后，再选择 slope / weights 等机制'],['保留连接','共享 face flux → 同一散度 → 时间更新']])}<p>将上述可替换位置包进 <code>Choice</code>，才从“固定 solver 的展开图”变成 supernet。PC 本身没有 WENO 权重可以学习；要搜索那类机制，必须先提供包含它的候选结构。</p><p><a href="#dsl">继续看：如何用 DSL 写 Choice →</a></p>`;

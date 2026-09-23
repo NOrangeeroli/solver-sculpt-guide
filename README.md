@@ -18,4 +18,4 @@ node --check app.js
 
 无需构建或外部依赖。GitHub Pages 从 `main` 分支根目录发布；推送更新后自动重建。`.nojekyll` 保持静态文件原样发布。
 
-页面包含 10 个章节，提供层级切换、候选对比、稀疏 gate 与预算演示、可复制代码和可下载配置。布局参考 [HyperBench 文档](https://norangeeroli.github.io/hyperbench-pages/#overview)。
+页面包含 11 个章节，提供层级切换、候选对比、稀疏 gate 与预算演示、可复制代码和可下载配置。布局参考 [HyperBench 文档](https://norangeeroli.github.io/hyperbench-pages/#overview)。
