@@ -16,7 +16,7 @@ const levelData=[
 {title:'数值机制',sub:'候选 / 平滑度 / 权重 / 限幅',intro:'L2 打开模块内部。WENO5 的模板预测不变时，可以只搜索如何由平滑度得到归一化权重；MP5 可以把五阶预测与限幅机制拆开。',tokens:['q₀, q₁, q₂','β₀, β₁, β₂','ω = normalize(α)','Σ ωₖ qₖ'],formula:'αₖ = dₖ / (ε + βₖ)²  [JS]\nωₖ = αₖ / Σⱼ αⱼ\nu⁻ᵢ₊½ = Σₖ ωₖ qₖ',next:'下一层：候选值成为 stencil 的线性组合；β 成为差分的平方和；归一化成为受保护的比值与聚合。',ports:'接口：同一 stencil → 候选值 / 无量纲权重 → 界面迹。'},
 {title:'离散与代数构件',sub:'模板读取 / 线性组合 / 聚合',intro:'L3 不再选择一个有名字的 WENO 算法，而是描述局部离散运算：读哪个邻居、按哪些系数相加、如何保护分母、如何限幅。',tokens:['shift(u, −2…2)','linear combination','square / ratio','weighted sum'],formula:'q₀ = ⅓uᵢ₋₂ − ⁷⁄₆uᵢ₋₁ + ¹¹⁄₆uᵢ\nβ₀ = ¹³⁄₁₂(uᵢ₋₂−2uᵢ₋₁+uᵢ)²\n     + ¼(uᵢ₋₂−4uᵢ₋₁+3uᵢ)²',next:'下一层：模板读取变成张量索引；线性组合与平方展开成 mul/add；分支展开成比较与 where。',ports:'接口：固定位置的浮点场与系数；显式保留 stencil 依赖。'},
 {title:'Torch 执行原语',sub:'索引 / 算术 / 比较 / 选择',intro:'L4 是终端层。所有宏最终在这里执行，由 PyTorch 构建 autograd 图。无需把每个高层 solver 再手写一份 Torch 实现。',tokens:['index / gather','add / mul / div','abs / max / exp','where / reduce'],formula:'x = index(u, stencil)\ny = add(mul(c₀, x₀), mul(c₁, x₁))\nloss.backward()  →  ∂loss/∂α, ∂loss/∂θ',next:'L4 不再向下拆分。不能把完整 solver 或 Python 回调伪装成一个“原语”。',ports:'接口：dtype/device 一致的张量；参数仍引用同一个 nn.Parameter。'}];
-pages.hierarchy=()=>head('02','HIERARCHY','五层表示，逐层展开。','层级是数值抽象的粒度，不是神经网络的深度。点击一层，沿着 WENO5 + SSPRK3 的示例路径查看它具体做什么。')+`
+pages.hierarchy=()=>head('02','HIERARCHY','五层表示，逐层展开。','层级是数值抽象的粒度，不是神经网络的深度。这里先展开数值一步内核；完整 solver 还包含选步、接受与重试，详见「CFL、拒步与回退」的控制分层。点击一层查看 WENO5 + SSPRK3 的内核。')+`
 <div class="diagram"><div class="diagram-head"><p class="label">EXPLORE A NUMERICAL STEP</p><span class="chip">交互 · 选择层级</span></div><div class="level-layout"><div class="level-list" aria-label="选择组件层级">${levelData.map((x,i)=>`<button data-level="${i}" aria-pressed="${i===1}"><b>L${i}</b>${x.title}<small>${x.sub}</small></button>`).join('')}</div><div id="level-detail" class="detail-panel" aria-live="polite"></div></div><p class="caption">图 02 · 展示概念依赖而非全部节点；宏命名与不同 solver 的具体图形以注册表和序列化图为准。</p></div>
 <h3>展开保持算法，替换候选改变算法</h3>${flow([['lower(graph, 2)','展开到机制层，数值语义应保留'],['插入 Choice','定义合法的替换点与候选集合'],['lower(graph, 4)','仍由同一套 Torch 原语执行']])}
 <div class="note">对于 L0–L3 的每个注册宏，展开规则只引入下一层节点；原输入端口是边界，input/const 是各层都可用的语言原子。L4 是明确终点。展开正确性与独立数值正确性需要分别测试。</div>
@@ -206,3 +206,56 @@ print(flux)    # [0, 0.5, 2, 0.5, 0.5, 0]
 print(next_u)  # [0, 0.95, 1.85, 1.15, 0, -0.95]`)}<p class="small">只有索引、比较选择和算术；没有调用隐藏的完整 solver。换成带梯度的参数张量后，autograd 沿这张图传播。L4 是终端层，不继续无限拆分。</p></div></section>
 <h3>把整步结果逐项对上</h3>${table(['单元 i','旧值 ūᵢ','左面 Fᵢ₋₁','右面 Fᵢ','增量 δuᵢ','新值 ū⁺ᵢ'],[['0','0','0','0','0','0'],['1','1','0','0.5','−0.05','0.95'],['2','2','0.5','2','−0.15','1.85'],['3','1','2','0.5','+0.15','1.15'],['4','0','0.5','0.5','0','0'],['5','−1','0.5','0','+0.05','−0.95']])}<div class="note">周期边界下，通量差求和抵消，所以本例更新前后的总和都是 3。这个检查验证守恒关系；它不单独证明所有初态、任意步长下的稳定性。这里 r·max|u|=0.2。</div>
 <h3>拆开以后，搜索发生在哪里？</h3>${flow([['L1 替换','PC ↔ MUSCL ↔ WENO；Godunov ↔ LLF'],['L2 替换','打开高阶重构后，再选择 slope / weights 等机制'],['保留连接','共享 face flux → 同一散度 → 时间更新']])}<p>将上述可替换位置包进 <code>Choice</code>，才从“固定 solver 的展开图”变成 supernet。PC 本身没有 WENO 权重可以学习；要搜索那类机制，必须先提供包含它的候选结构。</p><p><a href="#dsl">继续看：如何用 DSL 写 Choice →</a></p>`;
+// Time-control documentation: verified against the released budget-search runtime.
+const controllerOverview = pages.controllers;
+pages.controllers = () => controllerOverview() + `
+<h3>“调整 CFL”“自适应步长”“搜索步长”是三件事</h3>${table(['概念','当前实现做什么','变化发生在哪里'],[['调整 CFL','每个非 fixed 候选有一个可学习 raw，映射到 [0.01,0.45] 内的 C','训练更新之间；同一个 C 跨 profile、网格和 rollout 步共享'],['自适应 Δt','每步重算速度 a(u)，再用 min(C·Δx/a, remaining)','同一条轨迹的时间步之间；状态变化就可能改变步长'],['搜索 controller','学习整条控制策略的 gate；候选各跑自己的轨迹，组合 loss/cost','架构优化与最终硬选择'],['直接学习每一步 Δt','当前未实现独立的 Δt₀,Δt₁,… 参数向量','不能把现有 CFL 搜索理解为自由时间网格优化'],['拒步 / 回退规则','由所选 ControllerSpec 规定，按实际检查结果执行','当前不是对 retry、speed、guard 分别设置独立 Choice']])}
+<div class="diagram"><div class="diagram-head"><p class="label">TWO SHARED PARAMETER PATHS</p><span class="chip">同一个完整 solver</span></div>${flow([['数值结构 α / θ','重构、通量、积分器与内部参数'],['候选控制器 c','策略 gate π，及其 CFL 参数 raw_c'],['独立 rollout_c','Δt 随 u、Δx 和输出边界变化'],['联合目标','误差 + 成本预算 + 稀疏化']])}<div class="return-line">← 梯度更新数值参数、controller gate 和 CFL；重试分支由运行时检查决定</div><p class="caption">控制图 C · 当前是全局策略与 CFL 参数搜索，不是按每个单元输出 CFL 的神经网络 router。fixed_1_32 的比值保持固定，没有可学习 CFL raw。</p></div>
+<h3>时间控制如何放进 L0–L4？</h3><p>需要分别看<strong>可执行的步长算术图</strong>与<strong>完整轨迹的控制结构</strong>。前者已经逐层展开并参与执行；后者在当前 Burgers runtime 中有可检查的分层计划，但外层循环仍由 Python 实现。</p>${table(['层级','decision_graph：选一个 Δt','control_plan：管理一条轨迹'],[['L0','control.s.dt：给定波速、CFL、网格、剩余时间，选一步','independent_trajectory_rollouts：逐样本推进'],['L1','control.n.dt：相同策略的模块表示','output_intervals：推进到各个观测时刻'],['L2','control.m.dt：当前所选策略的机制表示','prepare_trial / execute_trial / settle_trial'],['L3','control.a.dt：展开公式、速度保护和输出截断','估速、选步、保存旧状态、检查、提交或恢复'],['L4','p.max / p.mul / p.div / p.min 等执行原语','观察、计数、分支、回滚等动作描述；不是统一张量 IR 的完整执行器']])}
+<div class="equation">Δt = min(C · Δx / max(a(u), 10⁻¹⁴), t<sub>out</sub> − t)<br>fixed 策略：Δt = min(Δx / 32, t<sub>out</sub> − t)</div><p class="small">这是 Burgers 当前速度策略的实际公式。Classic previous-CFL 则从 previous_dt 提议开始。decision_graph 的 L0→L1→L2 目前主要传递已选策略，实际算术在 L3→L4 展开；这些层级本身不意味着每个子机制已成为独立搜索 gate。</p>
+${code('Python · 检查选步图的五层数值一致性',`import torch
+from solver_sculpt.hierarchy import ir
+from solver_sculpt.hierarchy.burgers_control import (
+    PRESETS, decision_graph, control_plan,
+)
+
+spec = PRESETS["cell_cfl"]
+graph = decision_graph(spec)
+feeds = {key: torch.tensor(value, dtype=torch.float64)
+         for key, value in dict(speed=2., cfl=.2, dx=1/6,
+                                remaining=.03).items()}
+for level in range(5):
+    dt = ir.evaluate(ir.lower(graph, level), feeds)
+    torch.testing.assert_close(dt, feeds["dx"] * .1)
+# dt = 1/60；与下文 Godunov 示例的第一步一致。
+plan = control_plan(spec, level=4).to_dict()
+# plan 是可检查的控制结构，不是任意控制计划的通用执行入口。`)}
+<h3>梯度能经过哪里，哪里只是近似？</h3>${table(['对象','训练中的处理'],[['波速、CFL、Δt 和数值更新','在已经执行的路径上通过 Torch 求导；max/min 切换处不光滑'],['输出时刻截断','remaining 小于建议步长时，min 选择剩余时间，局部梯度路径随之改变'],['accept / reject / 循环次数','布尔判断和步数是离散决策，不对未执行分支求精确梯度'],['成本的实际尝试次数','前向使用整数计数；反向采用 fractional-attempt 直通代理，有偏'],['硬模型预算资格','重新 rollout 后检查实际计数，不拿软代理直接判定可行性']])}
+<h3>同名 CFL 组件，不能混为同一套接口</h3>${table(['入口','已实现内容','与当前搜索训练的关系'],[['burgers_control + BudgetSearchModel','终止于输出时刻、拒步 / 回退、可学习 CFL、完整策略 mixture','当前 Burgers 多网格预算训练使用的路径'],['programs.CFLTimeStep','跨 9 个一维均匀方程模型的状态波速选步组件','独立组件；C 是配置参数，不自动成为训练器的 nn.Parameter'],['programs.CFLRollout','编译时固定步数，逐步选 CFL 步长，连接 RK startup 与 variable-step AB history','显式有限图；不是按最终时刻停止的拒步控制器']])}
+<p class="small">CFLTimeStep 的零波速分支返回 cap，不使用 Burgers runtime 的 10⁻¹⁴ 速度下限。CFLRollout 的步数在构图时固定，elapsed 会随输入变化。这些差异影响语义，不能仅凭“都叫自适应”就互换。</p>
+<h3>导出必须携带时间策略</h3>${flow([['先剪枝数值图','选择兼容的 family 与内部组件'],['再选控制策略','最高权重兼容 controller，冻结 learned CFL'],['保存完整产物','structure.json + weights.pt + controller.json'],['重新测量','轨迹误差、accepted / rejected / fallbacks 与成本']])}<p class="small">单独导出数值 kernel，无法复现不同 CFL、输出截断和拒步带来的完整轨迹。当前最高权重兼容选择也不是遍历全部“硬数值结构 × controller”组合。</p>
+<p><a href="${SOURCE}solver_sculpt/hierarchy/burgers_budget_search.py" target="_blank" rel="noopener">查看训练参数与硬导出实现 ↗</a> · <a href="${SOURCE}docs/hierarchy/GLOBAL-CFL.md" target="_blank" rel="noopener">跨方程 CFLTimeStep ↗</a> · <a href="${SOURCE}docs/hierarchy/CFL-ROLLOUT.md" target="_blank" rel="noopener">有限 CFLRollout ↗</a></p>`;
+const simpleKernelWalkthrough = pages['simple-solver'];
+pages['simple-solver'] = () => simpleKernelWalkthrough() + `
+<h3>扩展这个算例：让 controller 决定步长</h3><p>前面的固定步长算例是数值内核。现在用同一个 PC + Godunov + Euler 内核，加上 <code>cell_cfl</code>，让它推进到物理时刻 <strong>T=0.03</strong>。仍是 6 个周期单元，Δx=1/6，CFL=0.2。</p><div class="diagram">${flow([['观察当前状态','a = maxᵢ |ūᵢ|'],['选择时间步','min(0.2·Δx/a, T−t)'],['调用已拆开的内核','PC + Godunov + Euler'],['检查后提交','接受才更新状态与 t']])}<p class="caption">算例图 C · controller 包围数值一步图；内核内部的五层结构保持不变。</p></div>
+${table(['尝试','当前最大速度','建议 Δt','输出前剩余时间','实际 Δt / Δx'],[['第一步','2','0.2×(1/6)/2 = 0.0166667','0.03','0.1'],['第二步','1.85','0.2×(1/6)/1.85 ≈ 0.0180180','0.0133333','0.08（被输出时刻截断）']])}
+<div class="equation">ū¹ = [0, 0.95, 1.85, 1.15, 0, −0.95]<br>ū(T) = [0, 0.9139, 1.7492, 1.2340, 0.0168, −0.9139]</div><p>第一步恰好等于前面 r=0.1 的手算。第二步因波速减小，本来可以走更大一步，但剩余时间更短，最终取 r=0.08。两步均接受，没有拒步或回退；这不是所有初态的保证。</p>
+${code('Python · 同一内核接入实际 CFL rollout',`import torch
+from solver_sculpt.hierarchy.burgers_catalogue_supernet import (
+    build_burgers_catalogue_supernet,
+)
+from solver_sculpt.hierarchy.burgers_control import PRESETS, rollout
+
+u0 = torch.tensor([[0., 1., 2., 1., 0., -1.]], dtype=torch.float64)
+net = build_burgers_catalogue_supernet().select_solver(
+    "fv_godunov_pc_rk1"
+).eval()
+with torch.no_grad():
+    result = rollout(net, u0, [0.03], 1/6, PRESETS["cell_cfl"])
+expected = torch.tensor([[[0., .9139, 1.7492, 1.234, .0168, -.9139]]],
+                        dtype=torch.float64)
+torch.testing.assert_close(result.predictions, expected)
+assert result.counters[0]["accepted"] == 2
+assert result.counters[0]["rejected"] == 0
+print(result.traces[0])  # 查看两个实际 dt 与接受记录`)}
+<div class="note">这个例子演示运行时调整 Δt，没有进行训练。接入 BudgetSearchModel 后，CFL raw 和 controller gate 才会作为参数由优化器更新。详细的五层控制映射、可学习范围与梯度限制见 <a href="#controllers">CFL、拒步与回退</a>。</div>`;
